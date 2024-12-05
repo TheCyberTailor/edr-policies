@@ -1,0 +1,129 @@
+# Security Configuration Assessment
+# Hardening policies for WordPress installations
+ 
+policy:
+  id: "wordpress_assessment"
+  file: "custom_wordpress_policy.yml"
+  name: "Security configuration assessment for WordPress installations."
+  description: "Guidance for establishing a secure configuration for WordPress installations."
+  references:
+    - https://wordpress.org/support/article/hardening-wordpress/
+    - https://wpsecuritychecklist.org/items/
+ 
+requirements:
+  title: "Check that the endpoint is a WordPress host and has the wp-cli tool installed."
+  description: "Requirements for running the SCA scan against the WordPress configuration policy."
+  condition: all
+  rules:
+    - 'f:$wp_install_dir/wp-config.php'
+    - 'c:wp --info --allow-root -> r:^WP\pCLI\sversion\p'
+ 
+variables:
+  $wp_install_dir: <WP_INSTALLATION_DIRECTORY> # Example: /var/www/html
+  $wp_host: <WP_SITE_URL> # Examples: https://example.com 
+  $wp_user: <WP_SYSTEM_INSTALLER_USERNAME> # Example: admin
+  $wp_security_plugin: <WP_SECURITY_PLUGIN> # Example: wordfence 
+ 
+checks:
+  - id: 100000
+    title: "WordPress hardening: Ensure the WordPress version is up to date."
+    description: "The installed version of WordPress should be the latest release from https://wordpress.org/download/."
+    rationale: "New vulnerabilities may be discovered in WordPress. It is important to update to the latest version of WordPress to prevent discovered vulnerabilities in old versions from being exploited."
+    remediation: "Update WordPress to the latest version."
+    condition: all
+    rules:
+      - c:runuser -l $wp_user -c "wp core check-update --path=$wp_install_dir" -> r:WordPress\sis\sat\sthe\slatest\sversion
+ 
+  - id: 100001
+    title: "WordPress hardening: Ensure the file permissions for the .htaccess file are set to 644."
+    description: "This policy checks the file permissions for the .htaccess file in the WordPress installation root directory."
+    rationale: "Unauthorized users might read the .htaccess file if the permissions are not strict enough. Also, permissions that are too restrictive may cause errors in loading a WordPress site."
+    remediation: "Set the file permissions to 644 by running the command chmod 644 $wp_install_dir/.htaccess"
+    condition: all
+    rules:
+      - c:stat -c '%a' $wp_install_dir/.htaccess -> r:644
+ 
+  - id: 100002
+    title: "WordPress hardening: Ensure WordPress debugging is turned off."
+    description: "This policy checks if WordPress debugging is enabled in the wp-config.php file."
+    rationale: "When WP_DEBUG is enabled, detailed information about errors on pages of the website is shown. This may contain information about errors, deprecated functions, and vulnerable code that can be exploited by malicious actors."
+    remediation: "Turn off WordPress debugging by setting the WP_DEBUG variable in wp-config.php to false."
+    condition: none
+    rules:
+      - c:runuser -l $wp_user -c "wp config list WP_DEBUG --path=$wp_install_dir" -> r:true|1
+ 
+  - id: 100003
+    title: "WordPress hardening: Ensure there are no backup files (.zip, .back, .bac, .old) in the WordPress installation root directory."
+    description: "This policy checks if there are backup or compressed files of the website or plugins in the WordPress installation root directory."
+    rationale: "Backup files of some sensitive configuration files e.g wp-config.php.bak may be created before editing the live configuration. Since these files no longer end in .php, they are not rendered by the PHP engine and can be read by anyone. This can lead to the disclosure of sensitive information."
+    remediation: "Perform a media cleanup to remove databases, old and backup files. Additionally, leave only necessary files in the WordPress installation root directory."
+    condition: none
+    rules:
+      - c:sh -c "cd $wp_install_dir; ls -la" -> r:.zip|.back|.backup|.bak|.old|.previous|.sql
+ 
+  - id: 100004
+    title: "WordPress hardening: Ensure common administrative account names are not used."
+    description: "This policy checks if common administrative accounts names(e.g. admin, administrator, webmaster) are used."
+    rationale: "The usage of common administrative account names increases the likelihood of a successful brute force attack."
+    remediation: "Rename all default administrative accounts and use uncommon administrative account names."
+    condition: none
+    rules:
+      - c:runuser -l $wp_user -c "wp user list --field=user_login --path=$wp_install_dir" -> r:admin|administrator|backup|webmaster
+ 
+  - id: 100005
+    title: "WordPress hardening: Ensure directory browsing is disabled."
+    description: "This policy checks if the contents of sensitive directories (e.g. wp-includes, wp-admin, wp-content) can be listed."
+    rationale: "When directory browsing is enabled on a web server, it may lead to disclosure of sensitive information and allow listing of the contents of privileged directories."
+    remediation: "Disable directory browsing by adding 'Options All -Indexes' in the .htaccess file of this WordPress installation."
+    condition: all
+    rules:
+      - c:cat $wp_install_dir/.htaccess -> r:Options\sAll\s\.Indexes
+ 
+  - id: 100006
+    title: "WordPress hardening: Ensure WordPress folder permissions are set to 755."
+    description: "This policy checks the permissions of folders in the WordPress installations."
+    rationale: "Using improper permissions on folders in a WordPress installation may leave the files in those directories exposed to unauthorized modification."
+    remediation: "Set all folders in the WordPress directory to 755 using the chmod command."
+    condition: all
+    rules:
+      - c:stat -c '%a' $wp_install_dir/wp-admin -> r:755
+      - c:stat -c '%a' $wp_install_dir/wp-includes -> r:755
+      - c:stat -c '%a' $wp_install_dir/wp-content -> r:755
+      - c:stat -c '%a' $wp_install_dir/wp-content/plugins -> r:755
+      - c:stat -c '%a' $wp_install_dir/wp-content/themes -> r:755
+ 
+  - id: 100007
+    title: "WordPress hardening: Ensure there are no out of date plugins."
+    description: "This policy checks to ensure that there are no outdated WordPress plugins in this WordPress installation."
+    rationale: "Out of date plugins may have vulnerabilities that malicious actors can exploit to take control of a WordPress website and subsequently the server."
+    remediation: "Update all WordPress plugins."
+    condition: none
+    rules:
+      - c:runuser -l $wp_user -c "wp plugin list --field=update --path=$wp_install_dir" -> r:available
+ 
+  - id: 100008
+    title: "WordPress hardening: Ensure there are no out of date WordPress themes."
+    description: "This policy checks to ensure that there are no outdated WordPress themes in this WordPress installation."
+    rationale: "Out of date themes may have vulnerabilities that malicious actors can exploit to take control of a WordPress website and subsequently the server."
+    remediation: "Update all WordPress themes."
+    condition: none
+    rules:
+      - c:runuser -l $wp_user -c "wp theme list --field=update --path=$wp_install_dir" -> r:available
+ 
+  - id: 100009
+    title: "WordPress hardening: Ensure a security plugin is installed and active."
+    description: "This policy checks to determine if the organization specified WordPress security plugin ($wp_security_plugin) is installed."
+    rationale: "Security plugins can provide a measure of protection against common exploits targeted at WordPress websites, such as brute force and SQL injection attacks. The presence of a security plugin will reduce the attack surface greatly."
+    remediation: "Install and activate the security plugin $wp_security_plugin."
+    condition: all
+    rules:
+      - c:runuser -l $wp_user -c "wp plugin is-active $wp_security_plugin --path=$wp_install_dir; echo $?" -> r:0
+ 
+  - id: 100010
+    title: "WordPress hardening: Ensure the default WordPress database prefix is changed."
+    description: "This policy checks to determine if the database prefix of the website has been changed from the WordPress default of wp_."
+    rationale: "Leaving the WordPress database prefix at its default value leaves a website vulnerable to SQL injection attacks. This is because there are many exploits that assume the database prefix is wp_"
+    remediation: "Change the WordPress database prefix from wp_. This can be done directly from the database or by using a suitable plugin."
+    condition: none
+    rules:
+      - c:runuser -l $wp_user -c "wp db prefix --path=$wp_install_dir" -> r:wp_
